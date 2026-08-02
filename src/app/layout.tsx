@@ -14,9 +14,13 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
           <header className="nav-header grid-span-12">
             <div className="nav-brand">TokenFall</div>
             <nav className="nav-links">
+              <a href="/landing" className="nav-link">Home</a>
               <a href="/" className="nav-link">Dashboard</a>
               <a href="/models" className="nav-link">Models</a>
               <a href="/keys" className="nav-link">Keys</a>
+              <a href="/genesis" className="nav-link">Pass</a>
+              <a href="/forge" className="nav-link">Staking</a>
+              <a href="/achievements" className="nav-link">Badges</a>
               <a href="/docs" className="nav-link">Docs</a>
             </nav>
           </header>

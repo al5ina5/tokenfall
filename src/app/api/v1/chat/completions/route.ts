@@ -9,6 +9,7 @@ import { apiKeys, users, usageLog } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { createHash } from "crypto";
+import { checkRateLimit } from "@/lib/ratelimit";
 
 // SHA256 hash for API key lookup
 function hashKey(key: string): string {
@@ -50,6 +51,12 @@ export async function POST(req: NextRequest) {
   // Check credit balance
   if (balance <= 0) {
     return Response.json({ error: { message: "Insufficient credits. Top up at https://tokenfall.io", type: "insufficient_credits" } }, { status: 402 });
+  }
+
+  // Rate limit check
+  const rateLimit = checkRateLimit(user.id, tier, 4096);
+  if (!rateLimit.allowed) {
+    return Response.json({ error: { message: rateLimit.reason, type: "rate_limited" } }, { status: 429 });
   }
 
   // Parse request body

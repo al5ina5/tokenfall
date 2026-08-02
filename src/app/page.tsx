@@ -3,6 +3,24 @@
 import { useEffect, useState } from "react";
 import { nanoid } from "nanoid";
 import Link from "next/link";
+import { BrowserProvider, parseEther } from "ethers"
+
+declare global {
+  interface Window {
+    ethereum?: {
+      request: (args: { method: string; params?: unknown[] }) => Promise<unknown>;
+    };
+  }
+}
+
+const SONIC_CHAIN_ID = "0x92"; // 146
+const SONIC_CHAIN = {
+  chainId: SONIC_CHAIN_ID,
+  chainName: "Sonic",
+  nativeCurrency: { name: "Sonic", symbol: "S", decimals: 18 },
+  rpcUrls: ["https://rpc.soniclabs.com"],
+  blockExplorerUrls: ["https://sonicscan.org"],
+};
 
 interface UserStats {
   creditBalance: number;
@@ -66,13 +84,30 @@ export default function Dashboard() {
     }
   };
 
-  const connectWallet = () => {
-    // Simulated wallet connect — in production this would use Phantom/Solflare
-    const fakeWallet = "0x" + nanoid(32);
-    localStorage.setItem("tokenfall_wallet", fakeWallet);
-    setWallet(fakeWallet);
-    fetchStats(userId);
-    setStep("topup");
+  const connectWallet = async () => {
+    setError("");
+    if (!window.ethereum) {
+      setError("Install MetaMask or another EVM wallet to continue.");
+      return;
+    }
+
+    try {
+      await window.ethereum.request({ method: "eth_requestAccounts" });
+      try {
+        await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SONIC_CHAIN_ID }] });
+      } catch {
+        await window.ethereum.request({ method: "wallet_addEthereumChain", params: [SONIC_CHAIN] });
+      }
+      const provider = new BrowserProvider(window.ethereum as any);
+      const signer = await provider.getSigner();
+      const address = await signer.getAddress();
+      localStorage.setItem("tokenfall_wallet", address);
+      setWallet(address);
+      await fetchStats(userId);
+      setStep("topup");
+    } catch {
+      setError("Wallet connection was cancelled.");
+    }
   };
 
   const handleTopUp = async () => {
@@ -88,18 +123,35 @@ export default function Dashboard() {
 
       if (amount <= 0) { setError("Select a plan or enter an amount."); setLoading(false); return; }
 
-      // Create or top-up user via the secure endpoint
+      if (!window.ethereum) {
+        setError("Connect MetaMask or another EVM wallet to pay.");
+        setLoading(false);
+        return;
+      }
+
+      const configResponse = await fetch("/api/payment-config");
+      const config = await configResponse.json();
+      if (!config.configured) {
+        setError("Payments are not configured yet. Add PAYMENT_WALLET_ADDRESS in Vercel.");
+        setLoading(false);
+        return;
+      }
+
+      await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SONIC_CHAIN_ID }] });
+      const provider = new BrowserProvider(window.ethereum as any);
+      const signer = await provider.getSigner();
+      const price = Number(selectedPlan === "custom" ? customAmount : PLANS.find(p => p.id === selectedPlan)?.price || 0);
+      const expectedWei = parseEther((price / 100).toString());
+      const transaction = await signer.sendTransaction({ to: config.recipient, value: expectedWei });
       const res = await fetch("/api/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, walletAddress: wallet, amount }),
+        body: JSON.stringify({ userId, walletAddress: wallet, txHash: transaction.hash, expectedWei: expectedWei.toString() }),
       });
       const data = await res.json();
 
       if (data.error) { setError(data.error); setLoading(false); return; }
-
       setStats(prev => ({ ...prev!, creditBalance: data.creditBalance }));
-
       setStep("keys");
     } catch (e: any) {
       setError(e.message || "Top-up failed.");
@@ -161,7 +213,7 @@ export default function Dashboard() {
 ║  CONNECT WALLET TO BEGIN     ║
 ╚══════════════════════════════╝`}
           </pre>
-          <div className="empty-state-text">Connect your Solana wallet to buy AI tokens at prices that should be illegal.</div>
+          <div className="empty-state-text">Connect your Sonic EVM wallet to buy AI tokens at prices that should be illegal.</div>
           <button className="btn btn-lg btn-primary" onClick={connectWallet}>
             Connect Wallet →
           </button>
@@ -177,7 +229,7 @@ export default function Dashboard() {
               wallet: {wallet.slice(0, 6)}...{wallet.slice(-4)}
             </span>
           </div>
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
+          <div className="plans-grid">
             {PLANS.map((p) => (
               <div
                 key={p.id}
@@ -201,7 +253,7 @@ export default function Dashboard() {
                 value={customAmount}
                 onChange={(e) => { setCustomAmount(e.target.value); setSelectedPlan("custom"); }}
               />
-              <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-h2)", fontWeight: 700, color: "var(--color-accent-text)" }}>USD</span>
+              <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-h2)", fontWeight: 700, color: "var(--color-accent-text)" }}>S</span>
               <span style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-tertiary)" }}>
                 = {(parseInt(customAmount || "0") * 1_000_000).toLocaleString()} tokens
               </span>

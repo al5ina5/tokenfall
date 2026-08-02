@@ -1,0 +1,8 @@
+node_modules/
+.next/
+.env.local
+.env*.local
+drizzle/
+*.tsbuildinfo
+next-env.d.ts
+yarn-error.log

@@ -9,232 +9,321 @@ interface UserStats {
   nftTier: string;
   totalTokensUsed: number;
   totalRequests: number;
-  walletAddress: string;
+  walletAddress: string | null;
 }
 
-export default function Dashboard() {
-  const [userId] = useState(() => {
-    if (typeof window === "undefined") return "demo";
-    const stored = localStorage.getItem("tokenfall_user_id");
-    if (stored) return stored;
-    const id = nanoid();
-    localStorage.setItem("tokenfall_user_id", id);
-    return id;
-  });
+const PLANS = [
+  { id: "starter", name: "Starter", price: "5", tokens: "5M", desc: "1M tokens free + budget models" },
+  { id: "builder", name: "Builder", price: "20", tokens: "25M", desc: "all budget models, priority routing" },
+  { id: "architect", name: "Architect", price: "50", tokens: "100M", desc: "premium models, unlimited rate limits" },
+];
 
+export default function Dashboard() {
+  const [userId, setUserId] = useState("");
+  const [wallet, setWallet] = useState("");
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [step, setStep] = useState<"connect" | "topup" | "keys" | "ready">("connect");
+  const [selectedPlan, setSelectedPlan] = useState("");
+  const [customAmount, setCustomAmount] = useState("");
   const [prompt, setPrompt] = useState("");
   const [response, setResponse] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
   const [apiKey, setApiKey] = useState("");
   const [keyCreated, setKeyCreated] = useState(false);
   const [savedCredits, setSavedCredits] = useState(0);
-  const [error, setError] = useState("");
 
+  // Init user from localStorage
   useEffect(() => {
-    fetch(`/api/users?userId=${userId}`)
-      .then((r) => r.json())
-      .then((data) => {
+    const stored = localStorage.getItem("tokenfall_user_id");
+    const id = stored || nanoid();
+    if (!stored) localStorage.setItem("tokenfall_user_id", id);
+    setUserId(id);
+
+    const w = localStorage.getItem("tokenfall_wallet");
+    if (w) {
+      setWallet(w);
+      fetchStats(id);
+    }
+  }, []);
+
+  const fetchStats = async (uid: string) => {
+    try {
+      const res = await fetch(`/api/users?userId=${uid}`);
+      const data = await res.json();
+      if (data.error) {
+        setStats({ creditBalance: 0, nftTier: "none", totalTokensUsed: 0, totalRequests: 0, walletAddress: null });
+        setStep("connect");
+      } else {
         setStats(data);
         const saved = Math.round((data.totalTokensUsed / 1_000_000) * 0.1 * 100) / 100;
         setSavedCredits(saved);
-      })
-      .catch(() => {
-        setStats({
-          creditBalance: 1_000_000,
-          nftTier: "none",
-          totalTokensUsed: 0,
-          totalRequests: 0,
-          walletAddress: "",
-        });
-      });
-  }, [userId]);
+        if ((data.creditBalance || 0) <= 0) setStep("topup");
+        else setStep("keys");
+      }
+    } catch {
+      setStep("connect");
+    }
+  };
 
-  const handleCreateKey = async () => {
+  const connectWallet = () => {
+    // Simulated wallet connect — in production this would use Phantom/Solflare
+    const fakeWallet = "0x" + nanoid(32);
+    localStorage.setItem("tokenfall_wallet", fakeWallet);
+    setWallet(fakeWallet);
+    fetchStats(userId);
+    setStep("topup");
+  };
+
+  const handleTopUp = async () => {
+    setLoading(true);
+    setError("");
+    try {
+      const amount = selectedPlan === "custom"
+        ? parseInt(customAmount) * 1_000_000
+        : selectedPlan === "starter" ? 5_000_000
+        : selectedPlan === "builder" ? 25_000_000
+        : selectedPlan === "architect" ? 100_000_000
+        : 0;
+
+      if (amount <= 0) { setError("Select a plan or enter an amount."); setLoading(false); return; }
+
+      // Create user if needed, then add credits
+      await fetch("/api/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "x-user-id": userId },
+        body: JSON.stringify({ name: "init", walletAddress: wallet }),
+      });
+
+      // In production: on-chain tx here. For now, simulate credit grant.
+      setStats(prev => ({ ...prev!, creditBalance: amount }));
+
+      // Update DB credits
+      await fetch(`/api/users?userId=${userId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ creditBalance: amount }),
+      });
+
+      setStep("keys");
+    } catch (e: any) {
+      setError(e.message || "Top-up failed.");
+    }
+    setLoading(false);
+  };
+
+  const createApiKey = async () => {
     setLoading(true);
     setError("");
     try {
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json", "x-user-id": userId },
-        body: JSON.stringify({ name: "dashboard-key" }),
+        body: JSON.stringify({ name: "primary", walletAddress: wallet }),
       });
       const data = await res.json();
-      if (data.key) {
-        setApiKey(data.key);
-        setKeyCreated(true);
-      } else {
-        setError("Failed to generate key. Try again.");
-      }
-    } catch {
-      setError("Network error. Check your connection.");
-    }
+      if (data.key) { setApiKey(data.key); setKeyCreated(true); setStep("ready"); }
+      else setError("Failed to generate key.");
+    } catch { setError("Network error."); }
     setLoading(false);
   };
 
   const handleSendPrompt = async () => {
-    if (!prompt.trim()) return;
-    setLoading(true);
-    setResponse("");
-    setError("");
+    if (!prompt.trim() || !apiKey) return;
+    setLoading(true); setResponse(""); setError("");
     try {
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: JSON.stringify({
-          model: "auto",
-          messages: [{ role: "user", content: prompt }],
-          stream: false,
-        }),
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
+        body: JSON.stringify({ model: "auto", messages: [{ role: "user", content: prompt }], stream: false }),
       });
       const data = await res.json();
-      if (data.error) {
-        setError(data.error.message);
-      } else {
-        setResponse(data.choices?.[0]?.message?.content || JSON.stringify(data, null, 2));
-        setPrompt("");
-      }
-    } catch (err: any) {
-      setError(err.message);
-    }
+      if (data.error) setError(data.error.message);
+      else { setResponse(data.choices?.[0]?.message?.content || JSON.stringify(data)); setPrompt(""); }
+    } catch (e: any) { setError(e.message); }
     setLoading(false);
   };
 
-  const tierLabel = (tier: string) => {
-    const labels: Record<string, string> = { none: "None", common: "Common", rare: "Rare", legendary: "Legendary" };
-    return labels[tier] || tier;
-  };
-
-  const tierClass = (tier: string) => {
-    if (tier === "legendary") return "badge-accent";
-    if (tier === "rare" || tier === "common") return "badge-success";
-    return "";
-  };
+  const tierLabel = (t: string) => ({ none: "None", common: "Common", rare: "Rare", legendary: "Legendary" }[t] || t);
 
   return (
     <div>
-      <div className="page-header">
+      {/* ASCII header */}
+      <pre className="ascii-lg" style={{ marginBottom: "var(--space-9)" }}>
+{`████████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗███████╗ █████╗ ██╗     ██╗
+╚══██╔══╝██╔═══██╗██║ ██╔╝██╔════╝████╗  ██║██╔════╝██╔══██╗██║     ██║
+   ██║   ██║   ██║█████╔╝ █████╗  ██╔██╗ ██║█████╗  ███████║██║     ██║
+   ██║   ██║   ██║██╔═██╗ ██╔══╝  ██║╚██╗██║██╔══╝  ██╔══██║██║     ██║
+   ██║   ╚██████╔╝██║  ██╗███████╗██║ ╚████║██║     ██║  ██║███████╗███████╗
+   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝`}
+      </pre>
+
+      {/* STEP 1: Connect wallet */}
+      {step === "connect" && (
+        <div className="empty-state" style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
+          <pre className="ascii-lg" style={{ marginBottom: "var(--space-4)", color: "var(--color-terminal-dim)" }}>
+{`╔══════════════════════════════╗
+║  CONNECT WALLET TO BEGIN     ║
+╚══════════════════════════════╝`}
+          </pre>
+          <div className="empty-state-text">Connect your Solana wallet to buy AI tokens at prices that should be illegal.</div>
+          <button className="btn btn-lg btn-primary" onClick={connectWallet}>
+            Connect Wallet →
+          </button>
+        </div>
+      )}
+
+      {/* STEP 2: Choose plan / top up */}
+      {(step === "topup" || step === "connect") && wallet && (
         <div>
-          <h1 className="page-title">Dashboard</h1>
-          <p className="page-subtitle">Your AI inference command center. Models, keys, usage — all in one place.</p>
-        </div>
-      </div>
-
-      {/* Stats grid */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-9)" }}>
-        <div className="stat-card">
-          <div className="stat-label">Credit Balance</div>
-          <div className="stat-value" style={{ color: stats && stats.creditBalance > 1_000_000 ? "var(--color-accent-text)" : "var(--color-text-primary)" }}>
-            {stats ? stats.creditBalance.toLocaleString() : "—"}
+          <div className="section-header" style={{ marginTop: step === "topup" ? 0 : "var(--space-9)" }}>
+            <h2 className="section-title">Choose Your Plan</h2>
+            <span style={{ fontFamily: "var(--font-mono)", fontSize: "var(--text-caption)", color: "var(--color-terminal-dim)" }}>
+              wallet: {wallet.slice(0, 6)}...{wallet.slice(-4)}
+            </span>
           </div>
-          <div className="stat-secondary">≈ ${stats ? (stats.creditBalance / 10000).toFixed(2) : "0.00"} USD</div>
-        </div>
-
-        <div className="stat-card">
-          <div className="stat-label">Tokens Used</div>
-          <div className="stat-value" style={{ color: "var(--color-success)" }}>
-            {stats ? stats.totalTokensUsed.toLocaleString() : "—"}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-6)" }}>
+            {PLANS.map((p) => (
+              <div
+                key={p.id}
+                className={`plan-card ${selectedPlan === p.id ? "selected" : ""}`}
+                onClick={() => { setSelectedPlan(p.id); setCustomAmount(""); }}
+              >
+                <div className="plan-name">{p.name}</div>
+                <div className="plan-price">${p.price}</div>
+                <div className="plan-detail">{p.tokens} tokens/month</div>
+                <div className="plan-detail">{p.desc}</div>
+              </div>
+            ))}
           </div>
-          <div className="stat-secondary">{stats ? `${stats.totalRequests || 0} requests` : ""}</div>
-        </div>
 
-        <div className="stat-card">
-          <div className="stat-label">You Saved</div>
-          <div className="stat-value" style={{ color: "var(--color-accent-text)" }}>
-            ${savedCredits.toFixed(2)}
+          <div className="card-accent" style={{ marginBottom: "var(--space-6)" }}>
+            <div className="field-label">or custom amount</div>
+            <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
+              <input
+                type="number" min="5" step="5" placeholder="5"
+                style={{ maxWidth: "120px", fontSize: "var(--text-h2)", fontWeight: 700, textAlign: "center" }}
+                value={customAmount}
+                onChange={(e) => { setCustomAmount(e.target.value); setSelectedPlan("custom"); }}
+              />
+              <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-h2)", fontWeight: 700, color: "var(--color-accent-text)" }}>USD</span>
+              <span style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-tertiary)" }}>
+                = {(parseInt(customAmount || "0") * 1_000_000).toLocaleString()} tokens
+              </span>
+            </div>
           </div>
-          <div className="stat-secondary">vs direct API pricing</div>
-        </div>
 
-        <div className="stat-card">
-          <div className="stat-label">NFT Tier</div>
-          <div className="stat-value" style={{ fontSize: "var(--text-h2)" }}>
-            <span className={`badge ${tierClass(stats?.nftTier || "none")}`}>{tierLabel(stats?.nftTier || "none")}</span>
-          </div>
-          <div className="stat-secondary">
-            {stats?.nftTier === "none" ? "Mint a Genesis Pass to unlock discounts" : `${stats?.nftTier === "legendary" ? "20" : stats?.nftTier === "rare" ? "10" : "5"}% discount active`}
-          </div>
+          <button className="btn btn-lg btn-primary" onClick={handleTopUp} disabled={loading || (!selectedPlan && !customAmount)} style={{ width: "100%" }}>
+            {loading ? "Processing..." : `Buy Credits — ${selectedPlan === "custom" ? `$${customAmount || "?"}` : selectedPlan ? `$${PLANS.find(p => p.id === selectedPlan)?.price}` : "Select Plan"}`}
+          </button>
+          {error && <div className="field-error" style={{ marginTop: "var(--space-3)", textAlign: "center" }}>{error}</div>}
         </div>
-      </div>
+      )}
 
-      {/* API Key Setup */}
-      {!keyCreated && (
-        <div className="section">
-          <div className="empty-state" style={{ background: "var(--color-surface)", borderRadius: "var(--radius-lg)", border: "1px solid var(--color-border)" }}>
-            <div className="empty-state-title">Create your first API key</div>
-            <div className="empty-state-text">Drop-in replacement for the OpenAI API. Same SDK, same endpoint format — just cheaper and crypto-native.</div>
-            <button className="btn btn-primary" onClick={handleCreateKey} disabled={loading}>
-              {loading ? "Generating…" : "Generate API Key"}
+      {/* STEP 3: Create key */}
+      {step === "keys" && (
+        <div style={{ marginTop: wallet ? 0 : "var(--space-9)" }}>
+          <div className="empty-state" style={{ background: "var(--color-surface)", border: "1px solid var(--color-border)" }}>
+            <pre className="ascii-lg" style={{ marginBottom: "var(--space-4)", color: "var(--color-accent-text)" }}>
+{`╔══════════════════════════════╗
+║  CREDITS LOADED              ║
+║  CREATE YOUR FIRST API KEY   ║
+╚══════════════════════════════╝`}
+            </pre>
+            <div className="empty-state-text">
+              Drop-in replacement for OpenAI. Same SDK. Same format. Just cheaper.
+            </div>
+            <button className="btn btn-lg btn-primary" onClick={createApiKey} disabled={loading}>
+              {loading ? "Generating..." : "Generate API Key"}
             </button>
-            {error && <div className="form-error" style={{ marginTop: "var(--space-3)" }}>{error}</div>}
+            {error && <div className="field-error" style={{ marginTop: "var(--space-3)" }}>{error}</div>}
           </div>
         </div>
       )}
 
-      {keyCreated && apiKey && (
-        <>
-          {/* API Key display */}
-          <div className="section">
-            <div className="alert-warning">
-              <div className="alert-warning-title">Save your API key — it won't be shown again</div>
-              <div className="mono-display">{apiKey}</div>
+      {/* STEP 4: Ready — stats + key + terminal */}
+      {step === "ready" && apiKey && (
+        <div>
+          {/* Stats */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "var(--space-4)", marginBottom: "var(--space-9)" }}>
+            <div className="stat-card halftone">
+              <div className="stat-label">Credits</div>
+              <div className="stat-value" style={{ color: stats && stats.creditBalance > 0 ? "var(--color-terminal)" : "var(--color-text-tertiary)" }}>
+                {stats ? stats.creditBalance.toLocaleString() : "—"}
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">Tokens Used</div>
+              <div className="stat-value" style={{ fontSize: "var(--text-h1)", color: "var(--color-terminal)" }}>
+                {stats ? stats.totalTokensUsed.toLocaleString() : "—"}
+              </div>
+            </div>
+            <div className="stat-card">
+              <div className="stat-label">You Saved</div>
+              <div className="stat-value" style={{ fontSize: "var(--text-h1)", color: "var(--color-accent-text)" }}>
+                ${savedCredits.toFixed(2)}
+              </div>
+            </div>
+            <div className="stat-card halftone-diagonal">
+              <div className="stat-label">NFT Tier</div>
+              <div className="stat-value" style={{ fontSize: "var(--text-h2)" }}>
+                <span className={`badge ${stats?.nftTier === "legendary" ? "badge-accent" : stats?.nftTier === "rare" ? "badge-success" : ""}`}>
+                  {tierLabel(stats?.nftTier || "none")}
+                </span>
+              </div>
             </div>
           </div>
 
-          {/* Quick Model Terminal */}
-          <div className="section">
+          {/* API Key */}
+          <div className="alert-accent" style={{ marginBottom: "var(--space-9)" }}>
+            <div className="alert-title">Your API Key — copy now, shown only once</div>
+            <div className="key-display">{apiKey}</div>
+            <div style={{ marginTop: "var(--space-3)", fontSize: "var(--text-caption)", color: "var(--color-terminal-dim)" }}>
+              export TOKENFALL_API_KEY=&quot;{apiKey.slice(0, 16)}...&quot;
+            </div>
+          </div>
+
+          {/* Quick Model */}
+          <div style={{ marginBottom: "var(--space-9)" }}>
             <div className="section-header">
               <h2 className="section-title">Quick Model</h2>
-              <span style={{ fontSize: "var(--text-caption)", color: "var(--color-text-tertiary)" }}>
-                model: auto · smart routing active
+              <span style={{ fontSize: "var(--text-caption)", color: "var(--color-terminal-dim)" }}>
+                $0.00014 per 1K tokens · <span className="typewriter" style={{ color: "var(--color-accent-text)" }}>auto routing</span>
               </span>
             </div>
-            <div className="card">
-              <div style={{ display: "flex", gap: "var(--space-2)", marginBottom: "var(--space-3)" }}>
-                <select className="form-select" style={{ width: "auto", minWidth: "200px" }} defaultValue="auto">
-                  <option value="auto">Auto (smart route)</option>
+            <div className="card card-halftone">
+              <div style={{ marginBottom: "var(--space-3)" }}>
+                <select style={{ maxWidth: "240px" }} defaultValue="auto">
+                  <option value="auto">auto (smart route)</option>
                   <option value="groq-llama-3.1-8b">Groq Llama 3.1 8B</option>
                   <option value="glm-4.7-flash">GLM-4.7 Flash (free)</option>
                 </select>
               </div>
               <textarea
-                className="form-textarea"
-                rows={3}
-                placeholder="Type a prompt and press Enter…"
+                rows={3} placeholder="> type a prompt..."
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && !e.shiftKey) {
-                    e.preventDefault();
-                    handleSendPrompt();
-                  }
-                }}
+                onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSendPrompt(); } }}
+                style={{ fontFamily: "var(--font-mono)", color: "var(--color-terminal)" }}
               />
               <div style={{ display: "flex", justifyContent: "flex-end", marginTop: "var(--space-3)" }}>
                 <button className="btn btn-primary" onClick={handleSendPrompt} disabled={loading}>
-                  {loading ? "Sending…" : "Send"}
+                  {loading ? "..." : "Send ▸"}
                 </button>
               </div>
-              {error && <div className="form-error" style={{ marginTop: "var(--space-3)" }}>{error}</div>}
+              {error && <div className="field-error" style={{ marginTop: "var(--space-3)" }}>{error}</div>}
               {response && (
-                <div className="code-block" style={{ marginTop: "var(--space-4)", color: "var(--color-text-primary)" }}>
-                  {response}
-                </div>
+                <div className="code-block" style={{ marginTop: "var(--space-4)", color: "var(--color-text-primary)" }}>{response}</div>
               )}
             </div>
           </div>
 
-          {/* Quick Start Code */}
-          <div className="section">
-            <div className="section-header">
-              <h2 className="section-title">Quick Start</h2>
-            </div>
+          {/* Quick start */}
+          <div>
+            <div className="section-header"><h2 className="section-title">Quick Start</h2></div>
             <div className="card">
-              <p style={{ fontSize: "var(--text-body)", color: "var(--color-text-secondary)", marginBottom: "var(--space-4)" }}>
-                Drop-in replacement for OpenAI. Change <code style={{ color: "var(--color-accent-text)" }}>base_url</code> and <code style={{ color: "var(--color-accent-text)" }}>api_key</code>. That's it.
+              <p style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-secondary)", marginBottom: "var(--space-4)" }}>
+                Drop-in OpenAI replacement. Same SDK. Change base_url and api_key. Done.
               </p>
               <pre className="code-block">
 {`# Python
@@ -242,21 +331,24 @@ from openai import OpenAI
 
 client = OpenAI(
     base_url="https://api.tokenfall.io/v1",
-    api_key="${apiKey.slice(0, 12)}..."
+    api_key="${apiKey.slice(0, 16)}..."
 )
 
 response = client.chat.completions.create(
     model="auto",
-    messages=[{"role": "user", "content": "Hello, TokenFall!"}]
-)
-print(response.choices[0].message.content)`}
+    messages=[{"role": "user", "content": "Hello"}]
+)`}
               </pre>
-              <div style={{ marginTop: "var(--space-4)", fontSize: "var(--text-body-sm)", color: "var(--color-text-tertiary)" }}>
-                Browse <Link href="/models" style={{ color: "var(--color-accent-text)" }}>all models</Link> · Read the <Link href="/docs" style={{ color: "var(--color-accent-text)" }}>docs</Link>
+              <div style={{ marginTop: "var(--space-4)", fontSize: "var(--text-caption)", color: "var(--color-text-tertiary)" }}>
+                <Link href="/models" style={{ color: "var(--color-accent-text)" }}>Browse models</Link>
+                {" · "}
+                <Link href="/keys" style={{ color: "var(--color-accent-text)" }}>Manage keys</Link>
+                {" · "}
+                <Link href="/docs" style={{ color: "var(--color-accent-text)" }}>Full docs</Link>
               </div>
             </div>
           </div>
-        </>
+        </div>
       )}
     </div>
   );

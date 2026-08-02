@@ -88,22 +88,17 @@ export default function Dashboard() {
 
       if (amount <= 0) { setError("Select a plan or enter an amount."); setLoading(false); return; }
 
-      // Create user if needed, then add credits
-      await fetch("/api/keys", {
+      // Create or top-up user via the secure endpoint
+      const res = await fetch("/api/topup", {
         method: "POST",
-        headers: { "Content-Type": "application/json", "x-user-id": userId },
-        body: JSON.stringify({ name: "init", walletAddress: wallet }),
-      });
-
-      // In production: on-chain tx here. For now, simulate credit grant.
-      setStats(prev => ({ ...prev!, creditBalance: amount }));
-
-      // Update DB credits
-      await fetch(`/api/users?userId=${userId}`, {
-        method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ creditBalance: amount }),
+        body: JSON.stringify({ userId, walletAddress: wallet, amount }),
       });
+      const data = await res.json();
+
+      if (data.error) { setError(data.error); setLoading(false); return; }
+
+      setStats(prev => ({ ...prev!, creditBalance: data.creditBalance }));
 
       setStep("keys");
     } catch (e: any) {

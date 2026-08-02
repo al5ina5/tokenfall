@@ -18,7 +18,7 @@ export const apiKeys = pgTable("api_keys", {
 export const users = pgTable("users", {
   id: text("id").primaryKey(),
   walletAddress: text("wallet_address").unique(),
-  creditBalance: bigint("credit_balance", { mode: "number" }).default(1_000_000), // free 1M tokens
+  creditBalance: bigint("credit_balance", { mode: "number" }).default(0),
   nftTier: text("nft_tier").default("none"), // none | common | rare | legendary
   createdAt: timestamp("created_at").defaultNow().notNull(),
   lastLoginAt: timestamp("last_login_at"),

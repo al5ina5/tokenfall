@@ -39,7 +39,7 @@ export async function GET(req: NextRequest) {
   return Response.json({ keys: safe });
 }
 
-// POST /api/keys — create a new API key
+// POST /api/keys — create a new API key (requires existing user with credits)
 export async function POST(req: NextRequest) {
   const userId = req.headers.get("x-user-id");
   if (!userId) return Response.json({ error: "Missing x-user-id header" }, { status: 401 });
@@ -47,10 +47,15 @@ export async function POST(req: NextRequest) {
   let body: any = {};
   try { body = await req.json(); } catch {}
 
-  // Ensure user exists
+  // User must already exist with credits from a completed top-up
   const existing = await db.select().from(users).where(eq(users.id, userId)).limit(1);
   if (existing.length === 0) {
-    await db.insert(users).values({ id: userId, walletAddress: body.walletAddress || null, creditBalance: 1_000_000 });
+    return Response.json({ error: "No account found. Top up credits first.", code: "NO_ACCOUNT" }, { status: 402 });
+  }
+
+  const user = existing[0];
+  if ((user.creditBalance ?? 0) <= 0) {
+    return Response.json({ error: "No credits. Top up before creating API keys.", code: "NO_CREDITS" }, { status: 402 });
   }
 
   const { full, hash, prefix } = generateKey();

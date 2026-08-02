@@ -88,7 +88,12 @@ code,pre,.mono { font-family: var(--font-mono); }
 .ascii-box { font-family: var(--font-mono); font-size: 0.55rem; line-height: 1.2; color: var(--color-terminal); white-space: pre; text-align: center; }
 
 /* ═══ GRID ══════════════════════════════════════════════════════ */
-.page-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--space-6); max-width: 1200px; margin: 0 auto; padding: 0 var(--space-6); }
+.app-shell { width: min(100% - 48px, 1200px); margin-inline: auto; }
+.page-grid { display: grid; grid-template-columns: repeat(12, minmax(0, 1fr)); gap: var(--space-6); max-width: 1200px; margin: 0 auto; padding: 0; }
+.page-grid > * { min-width: 0; }
+@media (max-width: 640px) {
+  .app-shell { width: min(100% - 32px, 1200px); }
+}
 @media (max-width: 1024px) {
   .page-grid { grid-template-columns: repeat(8, 1fr); }
   .g12, .grid-span-12 { grid-column: span 8; }

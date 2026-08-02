@@ -3,6 +3,6 @@ export async function GET() {
   const creditsPerSonic = Number(process.env.CREDITS_PER_SONIC || 10_000_000);
   const chainId = Number(process.env.SONIC_CHAIN_ID || 146);
 
-  if (!recipient) return Response.json({ configured: false, chainId, creditsPerSonic }, { status: 503 });
-  return Response.json({ configured: true, recipient, chainId, creditsPerSonic, symbol: "S" });
+  if (!recipient) return Response.json({ configured: false, chainId, creditsPerSonic }, { status: 503, headers: { "Cache-Control": "no-store" } });
+  return Response.json({ configured: true, recipient, chainId, creditsPerSonic, symbol: "S" }, { headers: { "Cache-Control": "no-store" } });
 }

@@ -3,7 +3,8 @@
 import { useEffect, useState } from "react";
 import { nanoid } from "nanoid";
 import Link from "next/link";
-import { BrowserProvider, parseEther } from "ethers"
+import { BrowserProvider, parseEther } from "ethers";
+import { PLANS } from "@/lib/plans"
 
 declare global {
   interface Window {
@@ -31,11 +32,6 @@ interface UserStats {
   walletAddress: string | null;
 }
 
-const PLANS = [
-  { id: "starter", name: "Starter", price: "5", tokens: "5M", desc: "1M tokens free + budget models" },
-  { id: "builder", name: "Builder", price: "20", tokens: "25M", desc: "all budget models, priority routing" },
-  { id: "architect", name: "Architect", price: "50", tokens: "100M", desc: "premium models, unlimited rate limits" },
-];
 
 export default function Dashboard() {
   const [userId, setUserId] = useState("");
@@ -43,8 +39,8 @@ export default function Dashboard() {
   const [stats, setStats] = useState<UserStats | null>(null);
   const [step, setStep] = useState<"connect" | "topup" | "keys" | "ready">("connect");
   const [selectedPlan, setSelectedPlan] = useState("");
-  const [customAmount, setCustomAmount] = useState("");
   const [prompt, setPrompt] = useState("");
+  const [selectedModel, setSelectedModel] = useState("auto");
   const [response, setResponse] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -64,6 +60,8 @@ export default function Dashboard() {
     if (w) {
       setWallet(w);
       fetchStats(id);
+    } else {
+      setInitialized(true);
     }
   }, []);
 
@@ -118,14 +116,8 @@ export default function Dashboard() {
     setLoading(true);
     setError("");
     try {
-      const amount = selectedPlan === "custom"
-        ? parseInt(customAmount) * 1_000_000
-        : selectedPlan === "starter" ? 5_000_000
-        : selectedPlan === "builder" ? 25_000_000
-        : selectedPlan === "architect" ? 100_000_000
-        : 0;
-
-      if (amount <= 0) { setError("Select a plan or enter an amount."); setLoading(false); return; }
+      const plan = PLANS[selectedPlan as keyof typeof PLANS];
+      if (!plan) { setError("Select a plan before paying."); setLoading(false); return; }
 
       if (!window.ethereum) {
         setError("Connect MetaMask or another EVM wallet to pay.");
@@ -144,13 +136,12 @@ export default function Dashboard() {
       await window.ethereum.request({ method: "wallet_switchEthereumChain", params: [{ chainId: SONIC_CHAIN_ID }] });
       const provider = new BrowserProvider(window.ethereum as any);
       const signer = await provider.getSigner();
-      const price = Number(selectedPlan === "custom" ? customAmount : PLANS.find(p => p.id === selectedPlan)?.price || 0);
-      const expectedWei = parseEther((price / 100).toString());
+      const expectedWei = parseEther(plan.priceSonic);
       const transaction = await signer.sendTransaction({ to: config.recipient, value: expectedWei });
       const res = await fetch("/api/topup", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ userId, walletAddress: wallet, txHash: transaction.hash, expectedWei: expectedWei.toString() }),
+        body: JSON.stringify({ userId, walletAddress: wallet, txHash: transaction.hash, planId: plan.id }),
       });
       const data = await res.json();
 
@@ -186,7 +177,7 @@ export default function Dashboard() {
       const res = await fetch("/api/v1/chat/completions", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${apiKey}` },
-        body: JSON.stringify({ model: "auto", messages: [{ role: "user", content: prompt }], stream: false }),
+        body: JSON.stringify({ model: selectedModel, messages: [{ role: "user", content: prompt }], stream: false }),
       });
       const data = await res.json();
       if (data.error) setError(data.error.message);
@@ -242,38 +233,31 @@ export default function Dashboard() {
             </span>
           </div>
           <div className="plans-grid">
-            {PLANS.map((p) => (
-              <div
+            {Object.values(PLANS).map((p) => (
+              <button
+                type="button"
                 key={p.id}
                 className={`plan-card ${selectedPlan === p.id ? "selected" : ""}`}
-                onClick={() => { setSelectedPlan(p.id); setCustomAmount(""); }}
+                onClick={() => setSelectedPlan(p.id)}
+                aria-pressed={selectedPlan === p.id}
               >
                 <div className="plan-name">{p.name}</div>
-                <div className="plan-price">${p.price}</div>
-                <div className="plan-detail">{p.tokens} tokens/month</div>
-                <div className="plan-detail">{p.desc}</div>
-              </div>
+                <div className="plan-price">{p.priceSonic} S</div>
+                <div className="plan-detail">{p.label}</div>
+                <div className="plan-detail">{p.id === "architect" ? "premium models + priority" : p.id === "builder" ? "budget models + priority" : "budget models"}</div>
+              </button>
             ))}
           </div>
 
           <div className="card-accent" style={{ marginBottom: "var(--space-6)" }}>
-            <div className="field-label">or custom amount</div>
-            <div style={{ display: "flex", gap: "var(--space-2)", alignItems: "center" }}>
-              <input
-                type="number" min="5" step="5" placeholder="5"
-                style={{ maxWidth: "120px", fontSize: "var(--text-h2)", fontWeight: 700, textAlign: "center" }}
-                value={customAmount}
-                onChange={(e) => { setCustomAmount(e.target.value); setSelectedPlan("custom"); }}
-              />
-              <span style={{ fontFamily: "var(--font-display)", fontSize: "var(--text-h2)", fontWeight: 700, color: "var(--color-accent-text)" }}>S</span>
-              <span style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-tertiary)" }}>
-                = {(parseInt(customAmount || "0") * 1_000_000).toLocaleString()} tokens
-              </span>
+            <div className="field-label">Payment</div>
+            <div style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-secondary)" }}>
+              Native Sonic <strong style={{ color: "var(--color-accent-text)" }}>S</strong> payment. Your transaction is verified before credits or API keys unlock.
             </div>
           </div>
 
-          <button className="btn btn-lg btn-primary" onClick={handleTopUp} disabled={loading || (!selectedPlan && !customAmount)} style={{ width: "100%" }}>
-            {loading ? "Processing..." : `Buy Credits — ${selectedPlan === "custom" ? `$${customAmount || "?"}` : selectedPlan ? `$${PLANS.find(p => p.id === selectedPlan)?.price}` : "Select Plan"}`}
+          <button className="btn btn-lg btn-primary" onClick={handleTopUp} disabled={loading || !selectedPlan} style={{ width: "100%" }}>
+            {loading ? "Waiting for Sonic..." : selectedPlan ? `Pay ${PLANS[selectedPlan as keyof typeof PLANS].priceSonic} S · Buy ${PLANS[selectedPlan as keyof typeof PLANS].label}` : "Choose a plan"}
           </button>
           {error && <div className="field-error" style={{ marginTop: "var(--space-3)", textAlign: "center" }}>{error}</div>}
         </div>
@@ -352,10 +336,10 @@ export default function Dashboard() {
             </div>
             <div className="card card-halftone">
               <div style={{ marginBottom: "var(--space-3)" }}>
-                <select style={{ maxWidth: "240px" }} defaultValue="auto">
+                <select style={{ maxWidth: "240px" }} value={selectedModel} onChange={(event) => setSelectedModel(event.target.value)}>
                   <option value="auto">auto (smart route)</option>
                   <option value="groq-llama-3.1-8b">Groq Llama 3.1 8B</option>
-                  <option value="glm-4.7-flash">GLM-4.7 Flash (free)</option>
+                  <option value="glm-4.7-flash">GLM-4.7 Flash</option>
                 </select>
               </div>
               <textarea

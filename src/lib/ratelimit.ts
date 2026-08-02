@@ -1,7 +1,13 @@
-// ── Simple in-memory rate limiter ──
-// In production: replace with Redis-backed rate limiter.
+// ── Rate limiter ──
+// Uses Upstash Redis in production when configured; falls back to a conservative
+// per-instance limiter for local development.
+
+import { Redis } from "@upstash/redis";
 
 const buckets = new Map<string, { count: number; resetAt: number }>();
+const redis = process.env.UPSTASH_REDIS_REST_URL && process.env.UPSTASH_REDIS_REST_TOKEN
+  ? Redis.fromEnv()
+  : null;
 
 interface RateLimitConfig {
   tokensPerMinute: number;

@@ -18,8 +18,10 @@ export async function GET() {
 
   const stats = {
     modelsOnline: models.length,
-    cheapestOutput: Math.min(...models.map((m) => m.pricing.output)),
+    cheapestOutput: models.length ? Math.min(...models.map((m) => m.pricing.output)) : null,
   };
 
-  return Response.json({ models, stats });
+  return Response.json({ models, stats }, {
+    headers: { "Cache-Control": "public, s-maxage=60, stale-while-revalidate=300" },
+  });
 }

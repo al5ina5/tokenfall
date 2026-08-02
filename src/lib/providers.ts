@@ -289,7 +289,7 @@ export function getAvailableProviders(): string[] {
       case "groq": return !!process.env.GROQ_API_KEY;
       case "deepinfra": return !!process.env.DEEPINFRA_API_KEY;
       case "google": return !!process.env.GEMINI_API_KEY;
-      case "zai": return true; // free tier
+      case "zai": return !!process.env.ZAI_API_KEY;
       default: return false;
     }
   });

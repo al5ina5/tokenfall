@@ -1,4 +1,4 @@
-import { pgTable, text, timestamp, integer, bigint, pgEnum, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, timestamp, integer, bigint, numeric, index } from "drizzle-orm/pg-core";
 
 // ── API Keys ──
 export const apiKeys = pgTable("api_keys", {
@@ -12,7 +12,10 @@ export const apiKeys = pgTable("api_keys", {
   webhookUrl: text("webhook_url"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   rotatedAt: timestamp("rotated_at"),
-});
+}, (table) => ({
+  userIdIdx: index("api_keys_user_id_idx").on(table.userId),
+  keyHashIdx: index("api_keys_key_hash_idx").on(table.keyHash),
+}));
 
 // ── Users ──
 export const users = pgTable("users", {
@@ -38,7 +41,9 @@ export const usageLog = pgTable("usage_log", {
   latencyMs: integer("latency_ms"),
   success: text("success").default("true"), // true | error | rate_limited
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("usage_log_user_id_idx").on(table.userId),
+}));
 
 // ── Achievements ──
 export const achievements = pgTable("achievements", {
@@ -66,8 +71,13 @@ export const referrals = pgTable("referrals", {
 export const creditPurchases = pgTable("credit_purchases", {
   id: text("id").primaryKey(),
   userId: text("user_id").notNull(),
-  amount: integer("amount").notNull(), // credits purchased
-  costSol: integer("cost_sol").notNull(), // cost in lamports
-  txHash: text("tx_hash"),
+  planId: text("plan_id").notNull().default("custom"),
+  amount: bigint("amount", { mode: "number" }).notNull(),
+  costWei: numeric("cost_wei", { precision: 78, scale: 0 }).notNull(),
+  txHash: text("tx_hash").notNull().unique(),
+  status: text("status").notNull().default("credited"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
-});
+}, (table) => ({
+  userIdIdx: index("credit_purchases_user_id_idx").on(table.userId),
+  txHashIdx: index("credit_purchases_tx_hash_idx").on(table.txHash),
+}));

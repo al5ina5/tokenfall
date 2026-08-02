@@ -4,7 +4,7 @@
 import { NextRequest } from "next/server";
 import { db } from "@/db";
 import { apiKeys, users, creditPurchases } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { createHash, randomBytes } from "crypto";
 
@@ -86,7 +86,7 @@ export async function DELETE(req: NextRequest) {
   const keyId = req.headers.get("x-key-id");
   if (!userId || !keyId) return Response.json({ error: "Missing headers" }, { status: 400 });
 
-  await db.delete(apiKeys).where(eq(apiKeys.id, keyId));
+  await db.delete(apiKeys).where(and(eq(apiKeys.id, keyId), eq(apiKeys.userId, userId)));
 
   return Response.json({ deleted: true });
 }

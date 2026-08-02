@@ -72,7 +72,7 @@ export const MODELS: ModelDefinition[] = [
     speed: "medium",
     strengths: ["chat", "free"],
     requiresAuth: "none",
-    enabled: true, // Free tier, always on
+    enabled: !!process.env.ZAI_API_KEY,
   },
   {
     id: "gemini-3-flash",

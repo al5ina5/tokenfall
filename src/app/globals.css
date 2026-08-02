@@ -3,6 +3,7 @@
 
 /* ═══ TOKENFALL DESIGN SYSTEM v4 ═══════════════════════════════ */
 :root {
+  --z-sticky: 100;
   --space-1: 4px; --space-2: 8px; --space-3: 12px;
   --space-4: 16px; --space-6: 24px; --space-9: 36px; --space-12: 48px; --space-18: 72px;
 
@@ -67,8 +68,12 @@ h1,h2,h3,h4 { font-family: var(--font-display); font-weight: 700; color: var(--c
 code,pre,.mono { font-family: var(--font-mono); }
 
 /* ═══ TEXTURE ═══════════════════════════════════════════════════ */
-.halftone { background-color: var(--color-surface); background-image: radial-gradient(circle, #222 1px, transparent 1px); background-size: 6px 6px; }
+.halftone, .card-halftone { background-color: var(--color-surface); background-image: radial-gradient(circle, #222 1px, transparent 1px); background-size: 6px 6px; }
 .halftone-diagonal { background: repeating-linear-gradient(45deg, transparent, transparent 6px, var(--color-accent-subtle) 6px, var(--color-accent-subtle) 12px); }
+.scanline::after { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 9999; background: repeating-linear-gradient(0deg, transparent, transparent 3px, rgba(0,0,0,.025) 3px, rgba(0,0,0,.025) 4px); }
+.typewriter::after { content: "▌"; color: var(--color-terminal); animation: blink 1s step-end infinite; }
+@keyframes blink { 50% { opacity: 0; } }
+.btn-sm { min-height: 36px; padding: 8px 14px; font-size: var(--text-caption); }
 
 .hero-halftone {
   position: relative; overflow: hidden;
@@ -84,22 +89,28 @@ code,pre,.mono { font-family: var(--font-mono); }
 
 /* ═══ GRID ══════════════════════════════════════════════════════ */
 .page-grid { display: grid; grid-template-columns: repeat(12, 1fr); gap: var(--space-6); max-width: 1200px; margin: 0 auto; padding: 0 var(--space-6); }
-@media (max-width: 1024px) { .page-grid { grid-template-columns: repeat(8, 1fr); } }
-@media (max-width: 768px) { .page-grid { grid-template-columns: repeat(4, 1fr); } }
-@media (max-width: 640px) { .page-grid { grid-template-columns: repeat(2, 1fr); padding: 0 var(--space-4); gap: var(--space-4); } }
-.g12, .grid-span-12 { grid-column: span 12; }
-.g8, .grid-span-8 { grid-column: span 8; }
-.g6, .grid-span-6 { grid-column: span 6; }
-.g4, .grid-span-4 { grid-column: span 4; }
+@media (max-width: 1024px) {
+  .page-grid { grid-template-columns: repeat(8, 1fr); }
+  .g12, .grid-span-12 { grid-column: span 8; }
+  .g8, .grid-span-8 { grid-column: span 8; }
+  .g6, .grid-span-6 { grid-column: span 6; }
+  .g4, .grid-span-4 { grid-column: span 4; }
+}
 @media (max-width: 768px) {
-  .g8, .g6, .g4, .g12,
-  .grid-span-8, .grid-span-6, .grid-span-4, .grid-span-12 { grid-column: span 4; }
+  .page-grid { grid-template-columns: repeat(4, 1fr); }
+  .g8, .g6, .g4, .g12, .grid-span-8, .grid-span-6, .grid-span-4, .grid-span-12 { grid-column: span 4; }
 }
 @media (max-width: 640px) {
-  .g8, .g6, .g4, .g12,
-  .grid-span-8, .grid-span-6, .grid-span-4, .grid-span-12 { grid-column: span 2; }
+  .page-grid { grid-template-columns: repeat(2, 1fr); padding: 0 var(--space-4); gap: var(--space-4); }
+  .g8, .g6, .g4, .g12, .grid-span-8, .grid-span-6, .grid-span-4, .grid-span-12 { grid-column: span 2; }
   .hide-mobile { display: none !important; }
+  .nav-header { align-items: flex-start; flex-direction: column; gap: var(--space-3); }
+  .nav-links { width: 100%; overflow-x: auto; padding-bottom: 2px; }
+  .nav-link { flex: 0 0 auto; min-height: 40px; display: inline-flex; align-items: center; }
 }
+
+main, header, footer { min-width: 0; }
+pre { max-width: 100%; overflow-x: auto; }
 
 main, header, footer { min-width: 0; }
 img, svg, video, pre { max-width: 100%; }

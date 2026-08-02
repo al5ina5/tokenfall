@@ -3,10 +3,10 @@
 
 import { NextRequest } from "next/server";
 import { routeRequest, streamRequest } from "@/lib/router";
-import { getModelById, MODELS, getEnabledModels } from "@/lib/models";
+import { getModelById, MODELS, getEnabledModels, TIER_PRICING } from "@/lib/models";
 import { db } from "@/db";
 import { apiKeys, users, usageLog } from "@/db/schema";
-import { eq } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { createHash } from "crypto";
 import { checkRateLimit } from "@/lib/ratelimit";
@@ -53,12 +53,6 @@ export async function POST(req: NextRequest) {
     return Response.json({ error: { message: "Insufficient credits. Top up at https://tokenfall.io", type: "insufficient_credits" } }, { status: 402 });
   }
 
-  // Rate limit check
-  const rateLimit = checkRateLimit(user.id, tier, 4096);
-  if (!rateLimit.allowed) {
-    return Response.json({ error: { message: rateLimit.reason, type: "rate_limited" } }, { status: 429 });
-  }
-
   // Parse request body
   let body: any;
   try {
@@ -69,9 +63,13 @@ export async function POST(req: NextRequest) {
 
   const modelId = body.model || "auto";
   const messages = body.messages || [];
-  const maxTokens = body.max_tokens || body.maxTokens || 4096;
+  const maxTokens = Math.min(body.max_tokens || body.maxTokens || 4096, 32_768);
   const temperature = body.temperature ?? 0.7;
   const stream = body.stream === true;
+
+  if (!Array.isArray(messages) || messages.length === 0 || messages.length > 100) {
+    return Response.json({ error: { message: "messages must contain between 1 and 100 items", type: "invalid_request" } }, { status: 400 });
+  }
 
   // Validate model
   const model = modelId !== "auto" ? getModelById(modelId) : null;
@@ -81,6 +79,16 @@ export async function POST(req: NextRequest) {
     if (enabled.length === 0) {
       return Response.json({ error: { message: `Model '${modelId}' not found and no fallbacks available`, type: "invalid_model" } }, { status: 400 });
     }
+  }
+
+  const rateLimit = checkRateLimit(user.id, tier, maxTokens);
+  if (!rateLimit.allowed) {
+    return Response.json({ error: { message: rateLimit.reason, type: "rate_limited" } }, { status: 429 });
+  }
+
+  // Streaming remains disabled until final usage metering is implemented.
+  if (stream) {
+    return Response.json({ error: { message: "Streaming is temporarily unavailable while usage metering is upgraded. Use stream: false.", type: "streaming_unavailable" } }, { status: 501 });
   }
 
   // Handle streaming
@@ -126,7 +134,6 @@ export async function POST(req: NextRequest) {
   }
 
   // Calculate credit cost (what we charge the user)
-  const { TIER_PRICING } = await import("@/lib/models");
   const modelDef = getModelById(result.model) || MODELS[0];
   const pricing = TIER_PRICING[modelDef.tier as keyof typeof TIER_PRICING] || TIER_PRICING.cheap;
   const totalCredits = Math.ceil(
@@ -141,9 +148,13 @@ export async function POST(req: NextRequest) {
 
   // Deduct credits
   if (finalCredits > 0) {
-    await db.update(users)
-      .set({ creditBalance: Math.max(0, balance - finalCredits) })
-      .where(eq(users.id, user.id));
+    const updated = await db.update(users)
+      .set({ creditBalance: balance - finalCredits })
+      .where(and(eq(users.id, user.id), gte(users.creditBalance, finalCredits)))
+      .returning({ creditBalance: users.creditBalance });
+    if (!updated.length) {
+      return Response.json({ error: { message: "Insufficient credits", type: "insufficient_credits" } }, { status: 402 });
+    }
   }
 
   // Log usage

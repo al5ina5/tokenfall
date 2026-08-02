@@ -9,29 +9,28 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="en">
-      <body className="scanline min-h-screen">
-        <header className="border-b border-[var(--border)] px-6 py-3 flex items-center justify-between">
-          <pre className="ascii-title text-xs leading-tight">
-{`████████╗ ██████╗ ██╗  ██╗███████╗███╗   ██╗
-╚══██╔══╝██╔═══██╗██║ ██╔╝██╔════╝████╗  ██║
-   ██║   ██║   ██║█████╔╝ █████╗  ██╔██╗ ██║
-   ██║   ██║   ██║██╔═██╗ ██╔══╝  ██║╚██╗██║
-   ██║   ╚██████╔╝██║  ██╗███████╗██║ ╚████║
-   ╚═╝    ╚═════╝ ╚═╝  ╚═╝╚══════╝╚═╝  ╚═══╝`}
-          </pre>
-          <nav className="flex gap-4 text-xs tracking-wider">
-            <a href="/" className="hover:text-[var(--gold)]">DASHBOARD</a>
-            <a href="/models" className="hover:text-[var(--gold)]">MODELS</a>
-            <a href="/keys" className="hover:text-[var(--gold)]">API KEYS</a>
-            <a href="/docs" className="hover:text-[var(--gold)]">DOCS</a>
-          </nav>
-        </header>
-        <main className="max-w-6xl mx-auto px-4 py-8">
-          {children}
+      <body>
+        <div className="page-grid">
+          <header className="nav-header grid-span-12">
+            <div className="nav-brand">TokenFall</div>
+            <nav className="nav-links">
+              <a href="/" className="nav-link">Dashboard</a>
+              <a href="/models" className="nav-link">Models</a>
+              <a href="/keys" className="nav-link">API Keys</a>
+              <a href="/docs" className="nav-link">Docs</a>
+            </nav>
+          </header>
+        </div>
+        <main className="page-grid">
+          <div className="grid-span-12">
+            {children}
+          </div>
         </main>
-        <footer className="border-t border-[var(--border)] px-6 py-4 text-xs text-[var(--border)] text-center">
-          <span className="ticker inline-block">TOKENFALL v1.0 // ULTRA-CHEAP AI TOKENS // SONIC CHAIN // NFT GAMIFICATION // CRYPTO-NATIVE // NO CARD FEES // PAY WITH SOL // </span>
-        </footer>
+        <div className="page-grid">
+          <footer className="grid-span-12 footer-meta">
+            TokenFall · Ultra-cheap AI inference · Pay with crypto · No credit card fees
+          </footer>
+        </div>
       </body>
     </html>
   );

@@ -6,3 +6,5 @@ drizzle/
 *.tsbuildinfo
 next-env.d.ts
 yarn-error.log
+.vercel
+.env*

@@ -20,7 +20,7 @@ interface ModelsResponse {
 
 export default function ModelsPage() {
   const [data, setData] = useState<ModelsResponse | null>(null);
-  const [filter, setFilter] = useState("all"); // all | cheap | good | best
+  const [filter, setFilter] = useState("all");
 
   useEffect(() => {
     fetch("/api/models")
@@ -28,17 +28,22 @@ export default function ModelsPage() {
       .then(setData);
   }, []);
 
-  const tierBadge = (tier: string) => {
-    if (tier === "cheap") return "badge badge-green";
-    if (tier === "good") return "badge badge-orange";
-    if (tier === "best") return "badge badge-gold";
+  const tierBadgeClass = (tier: string) => {
+    if (tier === "cheap") return "badge badge-success";
+    if (tier === "good") return "badge badge-warning";
+    if (tier === "best") return "badge badge-accent";
     return "badge";
   };
 
-  const speedText = (speed: string) => {
-    if (speed === "fast") return "⚡ FAST";
-    if (speed === "medium") return "— MEDIUM";
-    return "— SLOW";
+  const speedLabel = (speed: string) => {
+    if (speed === "fast") return "Fast";
+    if (speed === "medium") return "Medium";
+    return "Slow";
+  };
+
+  const speedBadgeClass = (speed: string) => {
+    if (speed === "fast") return "badge badge-success";
+    return "badge";
   };
 
   const filteredModels = data?.models.filter((m) => {
@@ -47,75 +52,72 @@ export default function ModelsPage() {
   }) || [];
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
+    <div>
+      <div className="page-header">
         <div>
-          <pre className="ascii-title text-xs leading-tight text-[var(--text)]">
-{`███╗   ███╗ ██████╗ ██████╗ ███████╗██╗     ███████╗
-████╗ ████║██╔═══██╗██╔══██╗██╔════╝██║     ██╔════╝
-██╔████╔██║██║   ██║██║  ██║█████╗  ██║     ███████╗
-██║╚██╔╝██║██║   ██║██║  ██║██╔══╝  ██║     ╚════██║
-██║ ╚═╝ ██║╚██████╔╝██████╔╝███████╗███████╗███████║
-╚═╝     ╚═╝ ╚═════╝ ╚═════╝ ╚══════╝╚══════╝╚══════╝`}
-          </pre>
-        </div>
-        <div className="text-right text-xs text-[var(--border)]">
-          <div>{data?.stats.modelsOnline || 0} MODELS ONLINE</div>
-          <div className="text-[var(--green)]">from ${data?.stats.cheapestOutput || 0}/M output</div>
+          <h1 className="page-title">Models</h1>
+          <p className="page-subtitle">
+            {data ? `${data.stats.modelsOnline} models online · from $${data.stats.cheapestOutput}/M output` : "Loading…"}
+          </p>
         </div>
       </div>
 
-      {/* Filter */}
-      <div className="flex gap-2">
+      <div className="filter-bar">
         {["all", "cheap", "good", "best"].map((f) => (
           <button
             key={f}
-            className={filter === f ? "btn-primary text-xs" : "btn-outline text-xs"}
+            className={`filter-pill ${filter === f ? "active" : ""}`}
             onClick={() => setFilter(f)}
           >
-            {f.toUpperCase()}
+            {f === "all" ? "All" : f}
           </button>
         ))}
       </div>
 
-      {/* Model Cards */}
-      <div className="space-y-3">
-        {filteredModels.map((m) => (
-          <div key={m.id} className="model-card halftone-dot">
-            <div className="flex items-start justify-between mb-2">
-              <div>
-                <div className="text-lg font-bold" style={{ fontFamily: "'Times New Roman', serif" }}>
-                  {m.name}
-                </div>
-                <div className="flex gap-2 mt-1">
-                  <span className={tierBadge(m.tier)}>{m.tier}</span>
-                  <span className="badge">{speedText(m.speed)}</span>
-                </div>
-              </div>
-              <div className="text-right">
-                <div className="text-xs text-[var(--border)]">OUTPUT / 1M TOKENS</div>
-                <div className="price-tag">${m.pricing.output.toFixed(2)}</div>
-              </div>
-            </div>
-            <div className="flex gap-4 text-xs text-[var(--border)]">
-              <span>Input: ${m.pricing.input.toFixed(2)}/M</span>
-              <span>Context: {m.context >= 1_000_000 ? `${m.context / 1_000_000}M` : `${Math.round(m.context / 1000)}K`}</span>
-              <span>Strengths: {m.strengths.join(", ")}</span>
-              {m.requiresAuth !== "none" && (
-                <span className="text-[var(--gold)]">Requires: {m.requiresAuth.toUpperCase()} PASS</span>
-              )}
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* Price comparison note */}
-      <div className="terminal-box halftone-line">
-        <div className="text-xs text-[var(--border)]">
-          TokenFall pricing is 10-30% below <span className="text-[var(--gold)]">OpenRouter</span> on equivalent models.
-          No credit card fees. No hidden charges. Pay with crypto.<br />
-          View real-time price comparisons: <code className="text-[var(--green)]">GET /api/models</code>
+      {filteredModels.length === 0 ? (
+        <div className="empty-state">
+          <div className="empty-state-title">No models available</div>
+          <div className="empty-state-text">Add provider API keys to unlock more models.</div>
         </div>
+      ) : (
+        <div style={{ display: "grid", gap: "var(--space-3)" }}>
+          {filteredModels.map((m) => (
+            <div key={m.id} className="model-card">
+              <div className="model-card-header">
+                <div style={{ minWidth: 0 }}>
+                  <div className="model-card-name">{m.name}</div>
+                  <div className="model-card-meta">
+                    <span className={tierBadgeClass(m.tier)}>{m.tier}</span>
+                    <span className={speedBadgeClass(m.speed)}>{speedLabel(m.speed)}</span>
+                    {m.requiresAuth !== "none" && (
+                      <span className="badge badge-accent">{m.requiresAuth} pass required</span>
+                    )}
+                  </div>
+                </div>
+                <div style={{ textAlign: "right", flexShrink: 0 }}>
+                  <div style={{ fontSize: "var(--text-caption)", color: "var(--color-text-tertiary)", marginBottom: "2px" }}>
+                    Output / 1M tokens
+                  </div>
+                  <div className="price-tag">
+                    ${m.pricing.output.toFixed(2)}
+                  </div>
+                </div>
+              </div>
+              <div className="model-card-details">
+                <span>Input ${m.pricing.input.toFixed(2)}/M</span>
+                <span>Context {m.context >= 1_000_000 ? `${m.context / 1_000_000}M` : `${Math.round(m.context / 1000)}K`}</span>
+                <span>{m.strengths.join(", ")}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <div className="card" style={{ marginTop: "var(--space-9)" }}>
+        <p style={{ fontSize: "var(--text-body-sm)", color: "var(--color-text-secondary)" }}>
+          All prices are 10-30% below OpenRouter. No credit card fees. Pay with crypto.{" "}
+          <code style={{ color: "var(--color-accent-text)", fontSize: "0.9em" }}>GET /api/models</code> for real-time prices.
+        </p>
       </div>
     </div>
   );

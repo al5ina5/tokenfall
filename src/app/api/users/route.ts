@@ -2,7 +2,7 @@
 // Read-only user stats. Credits are managed exclusively via /api/topup.
 
 import { db } from "@/db";
-import { users, usageLog } from "@/db/schema";
+import { users, usageLog, creditPurchases } from "@/db/schema";
 import { eq, sum, sql } from "drizzle-orm";
 import { NextRequest } from "next/server";
 
@@ -17,9 +17,12 @@ export async function GET(req: NextRequest) {
     totalTokens: sum(usageLog.tokensOutput),
     totalRequests: sql<number>`count(*)::int`,
   }).from(usageLog).where(eq(usageLog.userId, userId));
+  const [purchase] = await db.select({ id: creditPurchases.id })
+    .from(creditPurchases).where(eq(creditPurchases.userId, userId)).limit(1);
 
   return Response.json({
     walletAddress: user.walletAddress,
+    hasVerifiedPurchase: Boolean(purchase),
     creditBalance: user.creditBalance ?? 0,
     nftTier: user.nftTier ?? "none",
     totalTokensUsed: Number(stats?.totalTokens || 0),

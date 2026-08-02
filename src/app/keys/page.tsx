@@ -15,12 +15,16 @@ export default function KeysPage() {
     const id = nanoid(); localStorage.setItem("tokenfall_user_id", id); return id;
   });
   const [keys, setKeys] = useState<KeyInfo[]>([]);
+  const [hasVerifiedPurchase, setHasVerifiedPurchase] = useState<boolean | null>(null);
   const [name, setName] = useState("");
   const [generated, setGenerated] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
   const fetchKeys = async () => {
+    const stats = await fetch(`/api/users?userId=${userId}`).then(r => r.json());
+    setHasVerifiedPurchase(Boolean(stats.hasVerifiedPurchase));
+    if (!stats.hasVerifiedPurchase) return;
     const r = await fetch("/api/keys", { headers: { "x-user-id": userId } });
     const d = await r.json();
     setKeys(d.keys || []);
@@ -50,6 +54,14 @@ export default function KeysPage() {
 ╚═╝  ╚═╝╚═╝     ╚═╝    ╚═╝  ╚═╝╚══════╝   ╚═╝   ╚══════╝`}
       </pre>
 
+      {hasVerifiedPurchase === false ? (
+        <div className="card-accent" style={{ marginBottom: "var(--space-9)" }}>
+          <div className="alert-title">Purchase required before API keys</div>
+          <p style={{ color: "var(--color-text-secondary)", marginBottom: "var(--space-4)" }}>Choose a plan and complete a verified Sonic payment before creating keys.</p>
+          <a href="/" className="btn btn-primary">Buy credits first</a>
+        </div>
+      ) : (
+      <>
       <div className="section-header"><h2 className="section-title">New Key</h2></div>
       <div className="card" style={{ marginBottom: "var(--space-9)" }}>
         <label className="field-label" htmlFor="kn">Key name</label>
@@ -106,6 +118,8 @@ export default function KeysPage() {
   -H "Authorization: Bearer tf_sk_YOUR_KEY" \\
   -d '{"model":"auto","messages":[{"role":"user","content":"Hello"}]}'`}
       </pre>
+      </>
+      )}
     </div>
   );
 }

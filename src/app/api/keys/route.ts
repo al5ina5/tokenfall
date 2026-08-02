@@ -3,7 +3,7 @@
 
 import { NextRequest } from "next/server";
 import { db } from "@/db";
-import { apiKeys, users } from "@/db/schema";
+import { apiKeys, users, creditPurchases } from "@/db/schema";
 import { eq } from "drizzle-orm";
 import { nanoid } from "nanoid";
 import { createHash, randomBytes } from "crypto";
@@ -56,6 +56,12 @@ export async function POST(req: NextRequest) {
   const user = existing[0];
   if ((user.creditBalance ?? 0) <= 0) {
     return Response.json({ error: "No credits. Top up before creating API keys.", code: "NO_CREDITS" }, { status: 402 });
+  }
+
+  const [purchase] = await db.select({ id: creditPurchases.id })
+    .from(creditPurchases).where(eq(creditPurchases.userId, userId)).limit(1);
+  if (!purchase) {
+    return Response.json({ error: "Complete a verified Sonic purchase before creating API keys.", code: "PAYMENT_REQUIRED" }, { status: 402 });
   }
 
   const { full, hash, prefix } = generateKey();

@@ -24,6 +24,7 @@ const SONIC_CHAIN = {
 
 interface UserStats {
   creditBalance: number;
+  hasVerifiedPurchase: boolean;
   nftTier: string;
   totalTokensUsed: number;
   totalRequests: number;
@@ -50,6 +51,7 @@ export default function Dashboard() {
   const [apiKey, setApiKey] = useState("");
   const [keyCreated, setKeyCreated] = useState(false);
   const [savedCredits, setSavedCredits] = useState(0);
+  const [initialized, setInitialized] = useState(false);
 
   // Init user from localStorage
   useEffect(() => {
@@ -70,18 +72,20 @@ export default function Dashboard() {
       const res = await fetch(`/api/users?userId=${uid}`);
       const data = await res.json();
       if (data.error) {
-        setStats({ creditBalance: 0, nftTier: "none", totalTokensUsed: 0, totalRequests: 0, walletAddress: null });
+        setStats({ creditBalance: 0, hasVerifiedPurchase: false, nftTier: "none", totalTokensUsed: 0, totalRequests: 0, walletAddress: null });
         setStep("connect");
       } else {
         setStats(data);
         const saved = Math.round((data.totalTokensUsed / 1_000_000) * 0.1 * 100) / 100;
         setSavedCredits(saved);
-        if ((data.creditBalance || 0) <= 0) setStep("topup");
+        if (!data.hasVerifiedPurchase || (data.creditBalance || 0) <= 0) setStep("topup");
         else setStep("keys");
       }
-    } catch {
-      setStep("connect");
-    }
+      } catch {
+        setStep("connect");
+      } finally {
+        setInitialized(true);
+      }
   };
 
   const connectWallet = async () => {
@@ -192,6 +196,14 @@ export default function Dashboard() {
   };
 
   const tierLabel = (t: string) => ({ none: "None", common: "Common", rare: "Rare", legendary: "Legendary" }[t] || t);
+
+  if (!initialized) {
+    return (
+      <div className="card hero-halftone" style={{ minHeight: "360px", display: "grid", placeItems: "center" }}>
+        <div className="ascii-box">LOADING TOKENFALL...</div>
+      </div>
+    );
+  }
 
   return (
     <div>
